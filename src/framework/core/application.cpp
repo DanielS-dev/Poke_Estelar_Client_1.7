@@ -23,7 +23,7 @@
 #include "application.h"
 
 #include "asyncdispatcher.h"
-#include <gitinfo.h>
+//#include <gitinfo.h>
 
 #define ADD_QUOTES_HELPER(s) #s
 #define ADD_QUOTES(s) ADD_QUOTES_HELPER(s)
@@ -226,8 +226,8 @@ std::string Application::getOs()
 std::string Application::getBuildRevision()
 {
     std::stringstream ss;
-    ss << std::fixed << std::setprecision(3) << (static_cast<float>(GIT_COMMITS) / 1000);
+    ss << std::fixed << std::setprecision(3) << (static_cast<float>(1700) / 1000);
     return ss.str();
 }
-std::string Application::getVersion() { return ADD_QUOTES(GIT_VERSION); }
+std::string Application::getVersion() { return ADD_QUOTES("1.7"); }
 std::string Application::getBuildCommit() { return ADD_QUOTES(GIT_BRANCH); }
