@@ -1,5 +1,5 @@
 PokemonBarEntry < UIButton
-  height: 36
+  height: 48
   margin-top: 2
   margin-left: 2
   margin-right: 2
@@ -32,12 +32,45 @@ PokemonBarEntry < UIButton
     id: nameLabel
     anchors.left: iconHolder.right
     anchors.right: parent.right
-    anchors.verticalCenter: parent.verticalCenter
+    anchors.top: parent.top
+    margin-top: 4
     margin-left: 6
     margin-right: 6
     text-auto-resize: true
     color: #dfdfdf
     font: verdana-11px-rounded
+
+  UIWidget
+    id: hpBarBackground
+    anchors.left: iconHolder.right
+    anchors.right: parent.right
+    anchors.top: nameLabel.bottom
+    margin-left: 6
+    margin-right: 6
+    margin-top: 4
+    height: 12
+    border-width: 1
+    border-color: #1c1c1c
+    background-color: #1f2b1f
+    phantom: true
+
+    UIWidget
+      id: hpBarFill
+      anchors.left: parent.left
+      anchors.top: parent.top
+      anchors.bottom: parent.bottom
+      width: 0
+      background-color: #37a74b
+      phantom: true
+
+    Label
+      id: hpLabel
+      anchors.fill: parent
+      text: -- / --
+      text-align: center
+      color: #f0fff0
+      font: verdana-11px-rounded
+      phantom: true
 
 MiniWindow
   id: pokemonBarWindow

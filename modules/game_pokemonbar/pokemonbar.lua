@@ -1,19 +1,14 @@
+local POKEMON_BAR_OPCODE = 81
+local MAX_POKEMON_SLOTS = 6
+
 local pokemonBarWindow
 local pokemonList
 local emptyLabel
-local debugLoggedNoMatch = false
-local pokemonInfoCache = {}
-local pendingInfoRequests = {}
-local pendingLookRequests = {}
-local activeLookRequest = nil
-local MAX_POKEMON_SLOTS = 6
+local serverPokemonEntries = {}
 
 local pokemonBallItemIds = {
     [59270] = true,
     [54270] = true,
-    -- Add future pokeball item ids here:
-    -- [60000] = true,
-    -- [60001] = true,
 }
 
 local function safeItemNumber(item, methodName)
@@ -53,17 +48,9 @@ local function normalizeText(value)
         return ''
     end
 
-    value = value:gsub('[\r\n]+', ' ')
+    value = value:gsub('[\r\n\t]+', ' ')
     value = value:gsub('%s+', ' ')
     return value:trim()
-end
-
-local function getItemDebugIds(item)
-    return {
-        serverId = safeItemNumber(item, 'getServerId'),
-        clientId = safeItemNumber(item, 'getClientId'),
-        id = safeItemNumber(item, 'getId'),
-    }
 end
 
 local function isPokemonBallItem(item)
@@ -71,228 +58,31 @@ local function isPokemonBallItem(item)
         return false
     end
 
-    local ids = getItemDebugIds(item)
-    if pokemonBallItemIds[ids.serverId] == true
-        or pokemonBallItemIds[ids.clientId] == true
-        or pokemonBallItemIds[ids.id] == true then
+    local serverId = safeItemNumber(item, 'getServerId')
+    local clientId = safeItemNumber(item, 'getClientId')
+    local runtimeId = safeItemNumber(item, 'getId')
+    if pokemonBallItemIds[serverId] or pokemonBallItemIds[clientId] or pokemonBallItemIds[runtimeId] then
         return true
     end
 
-    local name = normalizeText(safeItemText(item, 'getName')):lower()
-    local description = normalizeText(safeItemText(item, 'getDescription')):lower()
-    local tooltip = normalizeText(safeItemText(item, 'getTooltip')):lower()
-    local combined = table.concat({ name, description, tooltip }, ' ')
+    local combined = table.concat({
+        normalizeText(safeItemText(item, 'getName')):lower(),
+        normalizeText(safeItemText(item, 'getDescription')):lower(),
+        normalizeText(safeItemText(item, 'getTooltip')):lower(),
+    }, ' ')
 
-    return combined:find('pokemon:', 1, true) ~= nil
-        or combined:find('pokeball', 1, true) ~= nil
-        or combined:find('pokeball', 1, true) ~= nil
+    return combined:find('pokemon:', 1, true) ~= nil or combined:find('pokeball', 1, true) ~= nil
 end
 
-local function truncateText(text, maxLength)
-    if #text <= maxLength then
-        return text
-    end
-
-    return text:sub(1, math.max(1, maxLength - 3)) .. '...'
-end
-
-local function extractPokemonName(rawDescription)
-    local text = normalizeText(rawDescription)
-    if text == '' then
-        return ''
-    end
-
-    local lowerText = text:lower()
-    local pokemonIndex = lowerText:find('pokemon:', 1, true)
-    if not pokemonIndex then
-        return ''
-    end
-
-    local namePart = text:sub(pokemonIndex + #'pokemon:')
-    namePart = namePart:match('^%s*(.-)%s+[Ll][Ee][Vv][Ee][Ll]%s*:') or
-        namePart:match('^%s*(.-)%s+[Hh][Pp]%s*:') or
-        namePart:match('^%s*([^:]*)')
-
-    namePart = normalizeText(namePart or '')
-    namePart = namePart:gsub('%s+[Ll][Ee][Vv][Ee][Ll].*$', '')
-
-    return normalizeText(namePart)
-end
-
-local function getCachedPokemonName(item)
-    local ids = getItemDebugIds(item)
-
-    return pokemonInfoCache[ids.id]
-        or pokemonInfoCache[ids.serverId]
-        or pokemonInfoCache[ids.clientId]
-        or ''
-end
-
-local function rememberPokemonName(item, description)
-    local name = extractPokemonName(description)
-    if name == '' or not item then
-        return
-    end
-
-    local ids = getItemDebugIds(item)
-    if ids.id then
-        pokemonInfoCache[ids.id] = name
-        pendingInfoRequests[ids.id] = nil
-    end
-    if ids.serverId then
-        pokemonInfoCache[ids.serverId] = name
-        pendingInfoRequests[ids.serverId] = nil
-    end
-    if ids.clientId then
-        pokemonInfoCache[ids.clientId] = name
-        pendingInfoRequests[ids.clientId] = nil
-    end
-end
-
-local function getRequestKey(item)
-    local ids = getItemDebugIds(item)
-    return ids.id or ids.serverId or ids.clientId
-end
-
-local function clearPendingLookRequest(requestKey)
-    if not requestKey then
-        return
-    end
-
-    pendingLookRequests[requestKey] = nil
-    if activeLookRequest and activeLookRequest.key == requestKey then
-        activeLookRequest = nil
-    end
-end
-
-local function processNextLookRequest()
-    if activeLookRequest or not g_game.isOnline() then
-        return
-    end
-
-    for requestKey, item in pairs(pendingLookRequests) do
-        if item then
-            activeLookRequest = {
-                key = requestKey,
-                item = item,
-            }
-            g_game.look(item)
-            return
-        end
-
-        pendingLookRequests[requestKey] = nil
-    end
-end
-
-local function requestPokemonInfo(item)
-    if not item then
-        return
-    end
-
-    local requestKey = getRequestKey(item)
-    if not requestKey or pokemonInfoCache[requestKey] or pendingInfoRequests[requestKey] then
-        return
-    end
-
-    pendingInfoRequests[requestKey] = true
-    g_game.requestItemInfo(item, 0)
-end
-
-local function requestPokemonLook(item)
-    if not item then
-        return
-    end
-
-    local requestKey = getRequestKey(item)
-    if not requestKey or pokemonInfoCache[requestKey] or pendingLookRequests[requestKey] then
-        return
-    end
-
-    pendingLookRequests[requestKey] = item
-    processNextLookRequest()
-end
-
-local function getDisplayName(item)
-    local cachedName = getCachedPokemonName(item)
-    if cachedName ~= '' then
-        return truncateText(cachedName, 24)
-    end
-
-    local description = normalizeText(safeItemText(item, 'getDescription'))
-    if description ~= '' then
-        local extracted = extractPokemonName(description)
-        if extracted ~= '' then
-            return truncateText(extracted, 24)
-        end
-        return truncateText(description, 24)
-    end
-
-    local tooltip = normalizeText(safeItemText(item, 'getTooltip'))
-    if tooltip ~= '' then
-        local extracted = extractPokemonName(tooltip)
-        if extracted ~= '' then
-            return truncateText(extracted, 24)
-        end
-        return truncateText(tooltip, 24)
-    end
-
-    local name = normalizeText(safeItemText(item, 'getName'))
-    if name ~= '' then
-        return truncateText(name, 24)
-    end
-
-    requestPokemonInfo(item)
-    requestPokemonLook(item)
-    return 'Pokemon'
-end
-
-local function logVisibleContainerItems()
-    if debugLoggedNoMatch then
-        return
-    end
-
-    debugLoggedNoMatch = true
-    pinfo('[PokemonBar] No matches found. Dumping visible container items...')
-
-    for _, container in pairs(g_game.getContainers()) do
-        local containerName = normalizeText(container:getName())
-        pinfo(string.format('[PokemonBar] Container id=%s name="%s" capacity=%d',
-            tostring(container:getId()), containerName, container:getCapacity()))
-
-        for slot = 0, container:getCapacity() - 1 do
-            local item = container:getItem(slot)
-            if item then
-                local ids = getItemDebugIds(item)
-                local itemName = normalizeText(safeItemText(item, 'getName'))
-                local description = normalizeText(safeItemText(item, 'getDescription'))
-                local tooltip = normalizeText(safeItemText(item, 'getTooltip'))
-
-                pinfo(string.format(
-                    '[PokemonBar] slot=%d serverId=%s clientId=%s runtimeId=%s name="%s" desc="%s" tooltip="%s"',
-                    slot + 1,
-                    tostring(ids.serverId),
-                    tostring(ids.clientId),
-                    tostring(ids.id),
-                    itemName,
-                    description,
-                    tooltip
-                ))
-            end
-        end
-    end
-end
-
-local function collectPokemonEntries()
+local function collectLocalPokemonBallItems()
     local entries = {}
 
     for _, container in pairs(g_game.getContainers()) do
-        local containerName = container:getName()
         for slot = 0, container:getCapacity() - 1 do
             local item = container:getItem(slot)
             if isPokemonBallItem(item) then
                 table.insert(entries, {
                     containerId = container:getId(),
-                    containerName = containerName,
                     slot = slot,
                     item = item,
                 })
@@ -308,10 +98,61 @@ local function collectPokemonEntries()
         return a.containerId < b.containerId
     end)
 
-    if #entries > MAX_POKEMON_SLOTS then
-        while #entries > MAX_POKEMON_SLOTS do
-            table.remove(entries)
+    local items = {}
+    for index, entry in ipairs(entries) do
+        if index > MAX_POKEMON_SLOTS then
+            break
         end
+        items[index] = entry.item
+    end
+
+    return items
+end
+
+local function splitTabLine(line)
+    local fields = {}
+    for field in (line .. '\t'):gmatch('(.-)\t') do
+        table.insert(fields, field)
+    end
+    return fields
+end
+
+local function parsePokemonBarPayload(buffer)
+    local entries = {}
+    if type(buffer) ~= 'string' or buffer == '' then
+        return entries
+    end
+
+    for rawLine in buffer:gmatch('[^\r\n]+') do
+        local line = normalizeText(rawLine)
+        if line ~= '' then
+            local fields = splitTabLine(rawLine)
+            local order = tonumber(fields[1]) or (#entries + 1)
+            local itemId = tonumber(fields[2]) or 59270
+            local name = normalizeText(fields[3])
+            local level = tonumber(fields[4]) or 1
+            local hp = tonumber(fields[5]) or 0
+            local maxHp = tonumber(fields[6]) or 0
+            local isDead = tonumber(fields[7]) == 1
+
+            table.insert(entries, {
+                order = order,
+                itemId = itemId,
+                name = name ~= '' and name or 'Pokemon',
+                level = level,
+                hp = hp,
+                maxHp = maxHp,
+                isDead = isDead,
+            })
+        end
+    end
+
+    table.sort(entries, function(a, b)
+        return a.order < b.order
+    end)
+
+    while #entries > MAX_POKEMON_SLOTS do
+        table.remove(entries)
     end
 
     return entries
@@ -326,12 +167,41 @@ local function clearPokemonEntries()
     pokemonList:setHeight(1)
 end
 
+local function updateHealthBar(widget, currentHp, maxHp)
+    local background = widget:getChildById('hpBarBackground')
+    local fill = background:getChildById('hpBarFill')
+    local hpLabel = background:getChildById('hpLabel')
+    local percent = 0
+
+    if maxHp and maxHp > 0 then
+        percent = math.max(0, math.min(1, (currentHp or 0) / maxHp))
+    end
+
+    fill:setWidth(math.floor(background:getWidth() * percent))
+    hpLabel:setText(string.format('%d / %d', currentHp or 0, maxHp or 0))
+end
+
 local function usePokemonBall(widget)
     if not widget or not widget.item then
         return
     end
 
     g_game.use(widget.item)
+end
+
+local function setPreviewItem(previewWidget, localItem, fallbackItemId)
+    if localItem then
+        previewWidget:setItem(localItem)
+        return
+    end
+
+    local ok, fallbackItem = pcall(function()
+        return Item.create(fallbackItemId, 1)
+    end)
+
+    if ok and fallbackItem then
+        previewWidget:setItem(fallbackItem)
+    end
 end
 
 local function refreshPokemonBar()
@@ -343,77 +213,62 @@ local function refreshPokemonBar()
         clearPokemonEntries()
         emptyLabel:setVisible(false)
         pokemonBarWindow:hide()
-        debugLoggedNoMatch = false
         return
     end
 
-    local entries = collectPokemonEntries()
     clearPokemonEntries()
 
-    if #entries == 0 then
-        logVisibleContainerItems()
+    if #serverPokemonEntries == 0 then
         emptyLabel:setVisible(true)
         pokemonList:setHeight(18)
         pokemonBarWindow:show()
         return
     end
 
-    debugLoggedNoMatch = false
+    local localItems = collectLocalPokemonBallItems()
     emptyLabel:setVisible(false)
 
-    for _, entry in ipairs(entries) do
+    for index, entry in ipairs(serverPokemonEntries) do
         local widget = g_ui.createWidget('PokemonBarEntry', pokemonList)
-        widget.item = entry.item
+        local localItem = localItems[index]
+
+        widget.item = localItem
         widget.onClick = usePokemonBall
         widget:setTooltip('')
-        widget:recursiveGetChildById('itemPreview'):setItem(entry.item)
-        widget:getChildById('nameLabel'):setText(getDisplayName(entry.item))
+        setPreviewItem(widget:recursiveGetChildById('itemPreview'), localItem, entry.itemId)
+        widget:getChildById('nameLabel'):setText(entry.name)
+        updateHealthBar(widget, entry.hp, entry.maxHp)
     end
 
-    pokemonList:setHeight(#entries * 38)
+    pokemonList:setHeight(#serverPokemonEntries * 48)
     pokemonBarWindow:show()
 end
 
+local function requestPokemonBar()
+    local protocolGame = g_game.getProtocolGame()
+    if protocolGame then
+        protocolGame:sendExtendedOpcode(POKEMON_BAR_OPCODE, 'request')
+    end
+end
+
+local function onPokemonBarOpcode(_, _, buffer)
+    serverPokemonEntries = parsePokemonBarPayload(buffer)
+    refreshPokemonBar()
+end
+
 local function onGameStart()
+    scheduleEvent(function()
+        if g_game.isOnline() then
+            requestPokemonBar()
+        end
+    end, 800)
+
     refreshPokemonBar()
 end
 
 local function onGameEnd()
-    pendingInfoRequests = {}
-    pendingLookRequests = {}
-    activeLookRequest = nil
+    serverPokemonEntries = {}
     refreshPokemonBar()
-end
-
-local function onItemInfo(itemList)
-    for _, data in pairs(itemList or {}) do
-        local item = data[1]
-        local description = data[2]
-        if item and description then
-            rememberPokemonName(item, description)
-        end
-    end
-
-    refreshPokemonBar()
-end
-
-local function onLookMessage(_, message)
-    if not activeLookRequest or type(message) ~= 'string' then
-        return
-    end
-
-    local requestItem = activeLookRequest.item
-    local requestKey = activeLookRequest.key
-    local extractedName = extractPokemonName(message)
-
-    clearPendingLookRequest(requestKey)
-
-    if extractedName ~= '' then
-        rememberPokemonName(requestItem, message)
-        refreshPokemonBar()
-    end
-
-    processNextLookRequest()
 end
 
 function init()
@@ -435,14 +290,15 @@ function init()
     connect(g_game, {
         onGameStart = onGameStart,
         onGameEnd = onGameEnd,
-        onItemInfo = onItemInfo,
     })
-    registerMessageMode(MessageModes.Look, onLookMessage)
 
+    ProtocolGame.registerExtendedOpcode(POKEMON_BAR_OPCODE, onPokemonBarOpcode)
     refreshPokemonBar()
 end
 
 function terminate()
+    ProtocolGame.unregisterExtendedOpcode(POKEMON_BAR_OPCODE)
+
     disconnect(Container, {
         onOpen = refreshPokemonBar,
         onClose = refreshPokemonBar,
@@ -455,9 +311,9 @@ function terminate()
     disconnect(g_game, {
         onGameStart = onGameStart,
         onGameEnd = onGameEnd,
-        onItemInfo = onItemInfo,
     })
-    unregisterMessageMode(MessageModes.Look, onLookMessage)
+
+    serverPokemonEntries = {}
 
     if pokemonBarWindow then
         pokemonBarWindow:destroy()
