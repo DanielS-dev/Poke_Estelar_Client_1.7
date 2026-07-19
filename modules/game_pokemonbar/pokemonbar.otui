@@ -1,0 +1,76 @@
+PokemonBarEntry < UIButton
+  height: 36
+  margin-top: 2
+  margin-left: 2
+  margin-right: 2
+  focusable: false
+  image-source: /images/ui/background
+  image-repeated: true
+
+  $hover:
+    background-color: #ffffff22
+
+  UIWidget
+    id: iconHolder
+    anchors.left: parent.left
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: 4
+    size: 28 28
+    image-source: /images/ui/2pixel_up_frame_borderimage
+    image-border: 3
+    padding: 2
+    phantom: true
+
+    Item
+      id: itemPreview
+      anchors.centerIn: parent
+      size: 24 24
+      virtual: true
+      phantom: true
+
+  Label
+    id: nameLabel
+    anchors.left: iconHolder.right
+    anchors.right: parent.right
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: 6
+    margin-right: 6
+    text-auto-resize: true
+    color: #dfdfdf
+    font: verdana-11px-rounded
+
+MiniWindow
+  id: pokemonBarWindow
+  width: 176
+  height: 220
+  focusable: false
+  image-smooth: false
+  !text: tr('Pokemon Bar')
+  &save: true
+
+  Label
+    id: emptyLabel
+    anchors.top: miniwindowHeader.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin-top: 10
+    text-align: center
+    color: #a0a0a0
+    !text: tr('No pokeballs found')
+    visible: false
+
+  MiniWindowContents
+    id: contentsPanel
+    anchors.top: miniwindowHeader.bottom
+    margin-top: 2
+    layout:
+      type: verticalBox
+      spacing: 1
+
+    Panel
+      id: pokemonList
+      width: 100%
+      height: 1
+      layout:
+        type: verticalBox
+        spacing: 1
