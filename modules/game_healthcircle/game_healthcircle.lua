@@ -29,6 +29,9 @@ manaShieldCircleOffsetY = 7
 
 optionPanel = nil
 
+-- Keep the module logic active, but hide only the center-screen HP/Mana arcs.
+local hideCenterHpManaCircles = true
+
 isHealthCircle = not g_settings.getBoolean('healthcircle_hpcircle')
 isManaCircle = not g_settings.getBoolean('healthcircle_mpcircle')
 isExpCircle = g_settings.getBoolean('healthcircle_expcircle')
@@ -102,6 +105,31 @@ function init()
     })
     if StatusIconBar and StatusIconBar.init then
         StatusIconBar.init()
+    end
+end
+
+local function applyCenterHpManaCircleVisibility()
+    if not hideCenterHpManaCircles then
+        return
+    end
+
+    if healthCircle then
+        healthCircle:setVisible(false)
+    end
+    if healthCircleFront then
+        healthCircleFront:setVisible(false)
+    end
+    if manaCircle then
+        manaCircle:setVisible(false)
+    end
+    if manaCircleFront then
+        manaCircleFront:setVisible(false)
+    end
+    if manaShieldCircle then
+        manaShieldCircle:setVisible(false)
+    end
+    if manaShieldCircleFront then
+        manaShieldCircleFront:setVisible(false)
     end
 end
 
@@ -255,6 +283,8 @@ function whenHealthChange()
         else
             healthCircleFront:setImageColor('#850C0C')
         end
+
+        applyCenterHpManaCircleVisibility()
     end
 end
 
@@ -346,6 +376,7 @@ end
 
 function whenManaShieldChange()
     updateManaShieldDisplay()
+    applyCenterHpManaCircleVisibility()
 end
 
 function whenManaChange()
@@ -396,6 +427,8 @@ function whenManaChange()
             width = imageSizeThin,
             height = ymppc
         })
+
+        applyCenterHpManaCircleVisibility()
     end
 end
 
@@ -572,6 +605,7 @@ function whenMapResizeChange()
     end
 
     updateManaShieldDisplay()
+    applyCenterHpManaCircleVisibility()
     if StatusIconBar and StatusIconBar.updatePosition then
         StatusIconBar.updatePosition()
     end
@@ -612,6 +646,7 @@ function setHealthCircle(value)
     end
 
     g_settings.set('healthcircle_hpcircle', not value)
+    applyCenterHpManaCircleVisibility()
 end
 
 function setManaCircle(value)
@@ -627,6 +662,7 @@ function setManaCircle(value)
     end
 
     g_settings.set('healthcircle_mpcircle', not value)
+    applyCenterHpManaCircleVisibility()
 end
 
 function setExpCircle(value)
