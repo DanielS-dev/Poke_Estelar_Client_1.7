@@ -242,6 +242,10 @@ controller:registerEvents(g_game, {
             g_game.enableFeature(GameDynamicForgeVariables)
         end
 
+        if version >= 1310 then
+            g_game.enableFeature(GameEffectU16)
+        end
+
         if version >= 1320 then
             g_game.enableFeature(GameEffectU16)
             g_game.enableFeature(GameContainerTypes)
